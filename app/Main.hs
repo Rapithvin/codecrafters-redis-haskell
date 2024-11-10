@@ -4,21 +4,28 @@
 
 module Main (main) where
 
-import Network.Simple.TCP (serve, HostPreference(HostAny), closeSock)
+import Network.Simple.TCP (serve, HostPreference(HostAny), closeSock, Socket, SockAddr, send)
 import System.IO (hSetBuffering, stdout, stderr, BufferMode(NoBuffering))
 
+-- Setup output buffering
+setupBuffering :: IO ()
+setupBuffering = hSetBuffering stdout NoBuffering *> hSetBuffering stderr NoBuffering
+
+-- Logging function
+logMsg :: String -> IO ()
+logMsg = putStrLn
+
+-- Main entry point
 main :: IO ()
-main = do
-    -- Disable output buffering
-    hSetBuffering stdout NoBuffering
-    hSetBuffering stderr NoBuffering
-
-    -- You can use print statements as follows for debugging, they'll be visible when running tests.
-    putStrLn "Logs from your program will appear here"
-
-    -- Uncomment this block to pass stage 1
+main = 
+    setupBuffering *> logMsg "Logs from your program will appear here" *>
     let port = "6379"
-    putStrLn $ "Redis server listening on port " ++ port
-    serve HostAny port $ \(socket, address) -> do
-        putStrLn $ "successfully connected client: " ++ show address
-        closeSock socket
+    in logMsg ("Redis server listening on port " ++ port) *>
+    serve HostAny port handleClient
+
+-- Handle client connections
+handleClient :: (Socket, SockAddr) -> IO ()
+handleClient (socket, address) = 
+    logMsg ("Successfully connected client: " ++ show address) *>
+    send socket "+PONG\r\n" *>
+    closeSock socket
