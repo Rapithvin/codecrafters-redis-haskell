@@ -3,29 +3,49 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Main (main) where
-
-import Network.Simple.TCP (serve, HostPreference(HostAny), closeSock, Socket, SockAddr, send)
+import Network.Simple.TCP (serve, HostPreference(HostAny), closeSock, Socket, SockAddr, recv, send)
 import System.IO (hSetBuffering, stdout, stderr, BufferMode(NoBuffering))
+import Data.ByteString.Char8 (ByteString, pack, unpack)
+import Control.Monad (forever, void)
 
--- Setup output buffering
-setupBuffering :: IO ()
-setupBuffering = hSetBuffering stdout NoBuffering *> hSetBuffering stderr NoBuffering
+-- Core Logic: Pure function to handle commands using guards
+handleCommand :: String -> String
+handleCommand cmd
+    | cmd == "PING" = "+PONG\r\n"
+    | otherwise     = "+PONG\r\n"
 
--- Logging function
+-- Parsing Layer: Parse commands from socket data
+parseCommand :: ByteString -> String
+parseCommand = unpack
+
+-- Logging Layer: Log messages
 logMsg :: String -> IO ()
 logMsg = putStrLn
 
--- Main entry point
-main :: IO ()
-main = 
-    setupBuffering *> logMsg "Logs from your program will appear here" *>
-    let port = "6379"
-    in logMsg ("Redis server listening on port " ++ port) *>
-    serve HostAny port handleClient
+-- IO Layer: Setup buffering
+setupBuffering :: IO ()
+setupBuffering = hSetBuffering stdout NoBuffering *> hSetBuffering stderr NoBuffering
 
--- Handle client connections
+-- IO Layer: Handle client connections
 handleClient :: (Socket, SockAddr) -> IO ()
 handleClient (socket, address) = 
     logMsg ("Successfully connected client: " ++ show address) *>
-    send socket "+PONG\r\n" *>
-    closeSock socket
+    clientLoop socket *> closeSock socket
+
+-- IO Layer: Client loop for receiving and responding to commands
+clientLoop :: Socket -> IO ()
+clientLoop socket = forever $
+    recv socket 1024 >>= maybe (return ()) (sendResponse socket . handleCommand . parseCommand)
+
+-- IO Layer: Send response back to the client
+sendResponse :: Socket -> String -> IO ()
+sendResponse socket = void . send socket . pack
+
+-- Main entry point
+main :: IO ()
+main =
+    setupBuffering *> 
+    logMsg "Logs from your program will appear here" *>
+    let port = "6379" in
+    logMsg ("Redis server listening on port " ++ port) *>
+    serve HostAny port handleClient
